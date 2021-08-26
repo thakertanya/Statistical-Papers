@@ -1,0 +1,163 @@
+---
+title: "Fire Accidents Analysis"
+author: "Tanya Nagarjun Thaker"
+date: "1/27/2021"
+output:
+  pdf_document:
+    latex_engine: xelatex
+  word_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(tidyverse)
+library(dplyr)
+library("opendatatoronto")
+library(formattable)
+packages <- search_packages("Fire Incidents")
+fire_data <- packages %>% list_package_resources() %>% get_resource()
+```
+
+## Introduction
+In a city like Toronto, one hears the ringing of a fire truck almost every single day. With the high number of fire accidents reported in Toronto, it is crucial to analyse how these fire accidents have been resolved and also find factors that may cause these incidents, in order to reduce the number of fire incidents that occur. In this paper, we will analyse the response time of the Toronto Fire Service (TFS), i.e. the time it takes for the TFS to arrive at the location of the fire, how long it takes them to get the fire under control based on the presence of the sprinklers and other factors that are necessary for the safety of the individuals during the fire alarm, and the estimate monetary of handling such an incident. 
+
+The dataset (Fire Services, 2021)  used in this paper consists of information that is sent directly to the Ontario Fire Marshal when a fire incident is reported, before Toronto Fire Services responds to the situation. It only contains fire incidents that the Ontario Fire Marshal deems as fire incidents. This dataset (Fire Services, 2021)  is updated annually and was recently updated on January 25th, 2021. 
+
+
+
+## Objectives
+* **Objective 1**\
+We will analyse the time it takes for the TFS to respond to the event, the response time,  which refers to the time elapsed from the ringing of the alarm  to the time of arrival at the location of the fire, and whether or not the presence of sprinklers affects the time it takes to control the fire.
+* **Objective 2**\
+We will analyse the presence of sprinklers among different buildings and the potential risks that come along with it. In addition to that, we will analyse whether or not the presence of sprinklers has affected the exposure of the fire. 
+
+
+## Data Cleaning
+* **Objective 1**\
+First, we cleaned the data to only include fire incidents for which there were no empty fields in the data. We then selected four variables: the Toronto Fire Service Alarm Time, the time of their arrival, the presence of a sprinkler system, and the time to get the fire under control. In order to calculate the amount of time TFS took to arrive, we had to subtract the time of alarm from the time of arrival. To find the time needed to get the fire under control, we had to subtract the time of arrival from the time at which the fire was under control . We added new columns Same_day, which represented whether or not the fire took place close to midnight, same_control_day, which represented whether they got it under control on the same day. Following that, we sliced the data to extract the string that represented the time and then, converted those strings into time and stored them into new columns. 
+```{r include=FALSE}
+# cleaning data to remove NA values
+ cleaned_data <- na.omit(fire_data)
+
+#added new column same_day that denoted whether the fire occured at midnight
+response_data <- cleaned_data %>% select(TFS_Alarm_Time, TFS_Arrival_Time, Fire_Under_Control_Time, Sprinkler_System_Presence) %>%mutate(Same_day =substr(cleaned_data$TFS_Alarm_Time, 0, 11) == substr(cleaned_data$TFS_Arrival_Time, 0, 11)) 
+
+#convert the string representing time into time and subtracting it to find the response
+response_data <- response_data %>% mutate(response_time = ifelse(Same_day== TRUE,yes = as.POSIXlt.character(substr(TFS_Arrival_Time, 12, 19), format="%H:%M:%S") - as.POSIXlt.character(substr(TFS_Alarm_Time, 12, 19), format="%H:%M:%S"),no= as.POSIXlt.character(substr(TFS_Arrival_Time, 12, 19), format="%H:%M:%S") - as.POSIXlt.character(substr(TFS_Alarm_Time, 12, 19), format="%H:%M:%S") + 24*60)
+)
+
+```
+
+```{r include=FALSE}
+#added new column same_day_extinguished that denoted whether the fire got under control the same day.
+control_data <- cleaned_data %>% select(TFS_Arrival_Time, Fire_Under_Control_Time, Sprinkler_System_Presence) %>% mutate(same_day_extinguished =substr(cleaned_data$TFS_Arrival_Time, 0, 11) == substr(cleaned_data$Fire_Under_Control_Time, 0, 11)) 
+# added new column to calculate the time taken in minutes to get the fire under control by subrtracting the string of time the fire got under control and the time TFS arrived.
+control_data <- control_data %>% mutate(control_time = ifelse(same_day_extinguished== TRUE,yes = as.POSIXlt.character(substr(Fire_Under_Control_Time, 12, 19), format="%H:%M:%S") - as.POSIXlt.character(substr(TFS_Arrival_Time, 12, 19), format="%H:%M:%S"),no= as.POSIXlt.character(substr(Fire_Under_Control_Time, 12, 19), format="%H:%M:%S") - as.POSIXlt.character(substr(TFS_Arrival_Time, 12, 19), format="%H:%M:%S") + 24*60*60 )) %>% mutate(control_time = control_time/60)
+
+```
+
+* **Objective 2**\
+From the original data, we cleaned the data to only include fire incidents for which there were no empty fields in the data. Following that, we used the three variables from the original data set i.e. the presence of the sprinkler system, exposure, and the status of the building to fulfill our objective. 
+```{r include=FALSE}
+# cleaning data to remove NA values
+sprinkler_present <- na.omit(fire_data)
+
+#select the columns needed
+sprinkler_present <- cleaned_data %>% select(Sprinkler_System_Presence, Building_Status,Exposures)
+```
+
+
+## Variables
+* **Objective 1**\
+To summarize data on the response time of the Toronto Fire Services, we created two new variables, Same_day and response_time. 
+  + *Same_day*: Categorical variable with boolean value, which stored whether or not the fire incident took place around midnight. 
+  + *response_time*: Discrete variable with double type that stored the time it took for the Toronto Fire Service to arrive at the place of the incident from the time of the alarm in minutes. 
+   + *Same_extinguish day*: Categorical variable with boolean value, which stored whether or not the fire got under control on the same day. 
+  + *control_time*: Discrete variable with double type that stored the time it took for the Toronto Fire Service to get the fire under control from the time of their arrival in minutes. 
+  
+
+
+* **Objective 2**\
+In order to draw conclusions about the presence of sprinklers depending on the building type, we used three variables: Sprinkler_System_Presence, Exposure and Building_Status. 
+  + *Sprinkler_System_Presence*: Categorical variable that stored the presence of sprinkler in the building 
+  + *Building_Status*: Categorical variable that stored value for whether the building was abandoned, under construction, under renovation, normal or undetermined. 
+  + *Exposure*: Categorical variable that represents the exposure of the fire. 
+
+
+
+## Discussion
+* **Objective 1**\
+```{r echo = FALSE}
+#creating a table for output on the pdf with numerical values
+summ <- data.frame(Summary = c("Maximum", "Minimum", "SD", "Mean", "Median" ), 
+                             Value = c(min(response_data$response_time), max(response_data$response_time), sd(response_data$response_time), mean(response_data$response_time), median(response_data$response_time)))
+knitr::kable(summ, caption = "Summary of response time")
+
+```
+
+```{r echo=FALSE, fig.height= 4}
+#plotting a graph of the control time based on presence of sprinkler
+control_data %>% ggplot(aes(x= Sprinkler_System_Presence, y = control_time)) + geom_boxplot() + coord_flip() +  scale_fill_brewer(palette="Accent") + labs(title = "Control time based on presence of Sprinklers", caption = "Figure 1", y = "Control Time", x= "Presence of Sprinkler System") 
+```
+
+\\
+
+From Table 1, an observation to make would be that the average time it takes for TFS to arrive at the place of the fire incident is 4.9 minutes. They have also managed to arrive at one of the places with a time of about 1.85 minutes, while the longest time they have taken is 8.5 minutes. The standard deviation of the response time is about 1.286 minutes, which means that the response time of TFS for every single fire incident is not too close but not far away from the mean. Furthermore, since the mean is greater than the median, we can say that the graph has a right tail and thus, implies that the distribution of response time is right skewed. From Figure 1, we can say that in buildings with no sprinkler system installed, it takes a much longer time for TFS to get the fire under control. 
+
+
+* **Objective 2**\
+```{r echo=FALSE, fig.height = 3, fig.width = 7}
+#plotting graph of Buildings where fire occured based on presence of sprinkler
+sprinkler_present %>% ggplot(aes(x= Sprinkler_System_Presence, fill = Building_Status)) + geom_bar() + labs(title = "Presence of Sprinkler System", caption = "Figure 2", x = "Sprinkler System", y= "Count") + coord_flip()  +  scale_fill_brewer(palette="Dark2")
+
+#plotting graph of how the sprinkler system affect exposure of the fire.
+sprinkler_present %>%  ggplot(aes(x= Sprinkler_System_Presence, y = Exposures, fill = Sprinkler_System_Presence)) + geom_boxplot(alpha=0.3) + theme(legend.position="none") + scale_fill_brewer(palette="BuPu") + coord_flip() + labs(title = "Exposure based on the presence of Sprinkler System", caption = "Figure 3", y = "Exposures", x= "Sprinkler System")
+```
+
+From Figure 2, we can deduce that a majority of the buildings in this dataset (Fire Services, 2021)  that have faced fire incidents, do not have a sprinkler system installed. In addition, out of those buildings who have had maximum fire incidents, a majority of the buildings with no sprinkler systems are normal buildings, i.e. they are either residential buildings or offices. From Figure 3, we see that the exposures of the fire have in general been higher when there was no sprinkler system installed in the building. Clearly, this proves to be very risky. The absence of sprinklers in the normal buildings can serve as a major risk factor for individuals in the building at the time of the fire incident. 
+
+
+
+
+## Conclusion
+In summary, from the analysis in this paper we can make one major conclusion. From Figures 1, 2, and 3, we find that a majority of fire incidents occur in normal buildings where sprinkler systems have not been installed, which in turn increases exposure of the fire. This not only serves as a great risk to individuals residing or working in the building, but also greatly increases the time that the TFS spends in getting the fire under control. Yet, with the high number of fire accidents occurring in Toronto, the TFS have maintained an impressive average response time of 4.9 minutes to arrive at the place of the fire. 
+
+
+## Shortcomings
+
+```{r include=FALSE}
+# calculating the original number of fields and the number of fields we used
+original_obs = as.numeric(count(fire_data))
+cleaned_obs = as.numeric(count(cleaned_data))
+```
+Assuming that all the information provided in the dataset (Fire Services, 2021)  is accurate, there are still many possible weaknesses that may lead to inaccurate results. Firstly, during the collection of this data, some fire incidents have been excluded due to exemptions under Section 8 of Municipal Freedom of Information and Protection of Privacy Act (MFIPPA). Secondly, during the data analysis we conducted, we excluded incidents for which files were missing. The original data set had `r original_obs` observations, while the cleaned dataset (Fire Services, 2021)  that we used had only `r cleaned_obs` observations, which essentially means we only used about `r round((cleaned_obs*100)/original_obs, 0)`% of the original data set. This can lead to severely inconclusive results. 
+
+## References
+
+Allaire J.J., Xie Y., McPherson J., Luraschi J., Ushey K., Atkins A., Wickham H., Cheng J., Chang W., & Iannone R. (2020). rmark down: Dynamic Documents for R. R package version 2.6. https://rmarkdown.rstudio.com
+
+Fire Services. (2021). Fire Incidents: Access the dataset. https://open.toronto.ca/dataset/fire-incidents/
+
+Gelfand S. (2020). opendatatoronto: Access the City of Toronto Open Data Portal. https:// sharlagelfand.github.io/opendatatoronto/, https://github.com/sharlagelfand/opendatatoronto/. 
+
+R Core Team (2020). R: A language and environment for statistical computing. R Foundation for Statistical Computing, Vienna, Austria. https://www.R-project.org/
+
+Ren K. & Russell K. (2021). formattable: Create 'Formattable' Data Structures. https://renkun-ken.github.io/formattable/, https://github.com/renkun-ken/formattable.
+
+Wickham H. et al., (2019). Welcome to the tidyverse. Journal of Open Source Software, 4(43), 1686, https://doi.org/10.21105/joss.01686
+
+Wickham H., François R., Henry L. and Müller K. (2021). dplyr: A Grammar of Data Manipulation. https://dplyr.tidyverse.org, https://github.com/tidyverse/dplyr
+
+Wickham H. (2016). ggplot2: Elegant Graphics for Data Analysis. Springer-Verlag New York.
+
+Xie Y., Allaire J.J. & Grolemund G. (2018). R Markdown: The Definitive Guide. Chapman and Hall/CRC. ISBN 9781138359338. https://bookdown.org/yihui/rmarkdown. 
+
+Xie Y., Dervieux C., & Riederer E. (2020). R Markdown Cookbook. Chapman and Hall/CRC. ISBN 9780367563837. https://bookdown.org/yihui/rmarkdown-cookbook. 
+
+
+
+
+
+
+
